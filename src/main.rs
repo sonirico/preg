@@ -1,23 +1,41 @@
-use preg::args::Args;
-use preg::read::{read_loop, WritePayload};
-use preg::write::write_loop;
-use std::io::Result;
-use std::sync::mpsc::channel;
-use std::thread;
+use clap::{App, Arg};
+use preg::{
+    read::{read_loop, WritePayload},
+    write::write_loop,
+};
+use tokio::sync::mpsc;
 
-fn main() -> Result<()> {
-    let args = Args::parse();
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let matches = App::new("preg")
+        .arg(
+            Arg::new("matches")
+                .short('m')
+                .long("matches")
+                .value_name("example")
+                .help("string occurrence to match against"),
+        )
+        .arg(
+            Arg::new("infile")
+                .short('f')
+                .long("infile")
+                .value_name("infile")
+                .help("file to read from"),
+        )
+        .get_matches();
 
-    let (sender, receiver) = channel::<WritePayload>();
+    let match_against = matches.value_of("matches").unwrap_or_default().to_string();
+    let infile = matches.value_of("infile").unwrap_or_default().to_string();
 
-    let read_handle = thread::spawn(move || read_loop("", &args.match_against, sender));
-    let write_handle = thread::spawn(move || write_loop("", receiver));
+    let (tx, rx) = mpsc::channel::<WritePayload>(32);
 
-    let read_res = read_handle.join().unwrap();
-    let write_res = write_handle.join().unwrap();
+    let read_task = tokio::spawn(async move { read_loop(&infile, &match_against, tx).await });
+    let write_task = tokio::spawn(async move {
+        let _ = write_loop("", rx).await;
+    });
 
-    read_res?;
-    write_res?;
+    let _ = read_task.await.unwrap();
+    write_task.await.unwrap();
 
     Ok(())
 }
