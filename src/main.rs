@@ -11,13 +11,12 @@ fn main() -> Result<()> {
     let (sender, receiver) = channel::<WritePayload>();
 
     let read_handle = thread::spawn(move || read_loop("", &args.match_against, sender));
-    let write_handle = thread::spawn(move || write_loop("", receiver));
 
     let read_res = read_handle.join().unwrap();
-    let write_res = write_handle.join().unwrap();
+
+    let _ = write_loop("", receiver);
 
     read_res?;
-    write_res?;
 
     Ok(())
 }
